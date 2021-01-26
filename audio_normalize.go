@@ -1,12 +1,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 )
@@ -22,63 +22,12 @@ func contains(arr [len(formats)]string, query string) bool {
 	return false
 }
 
-func collectFilenames(dir string) ([]os.FileInfo, error) {
+func collectFilenames(dir string) ([]string, error) {
 	color.Cyan("Reading all files in the directory '%s/'", dir)
 
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		log.Fatal(err)
-		return nil, err
-	}
+	var files []string
 
-	if len(files) > 1 {
-		fmt.Printf("Found %d files in dir '%s/'\n", len(files), dir)
-	} else {
-		fmt.Printf("Found %d file in dir '%s/'\n", len(files), dir)
-	}
-
-	if false {
-		errStr := fmt.Sprintf("Problem reading directory %s and collection filenames.", dir)
-		return nil, errors.New(errStr)
-	}
-
-	return files, nil
-}
-
-func main() {
-	fmt.Print("\n\n")
-	color.Red(`/\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
-	fmt.Print("\n")
-
-	if len(os.Args) < 2 {
-		fmt.Println("[usage error] - please provide a directory in which to look for video files.")
-		fmt.Println("Try again, such as: ~ ./audio_normalize movies/")
-		os.Exit(-1)
-	}
-
-	filepaths := []string{}
-	dir := os.Args[1]
-	files, readErr := collectFilenames(dir)
-	if readErr != nil {
-		color.Red("[ERROR]: %s", readErr)
-	}
-
-	fmt.Println("\nLooping through returned os.FileInfo slice for filenames...")
-	for i := 0; i < len(files); i++ {
-		if files[i].IsDir() {
-			// recurse and run again in that directory
-			color.Magenta("Folder found! %s", files[i].Name())
-			// TODO => files, readErr := collectFilenames(files[i].Name())
-		} else {
-			name := strings.Split(files[i].Name(), ".")[0]
-			ext := strings.Split(files[i].Name(), ".")[1]
-			fmt.Printf("Checking filetype of %s.%s\n", name, ext)
-			if contains(formats, ext) {
-				filepaths = append(filepaths, files[i].Name())
-			}
-		}
-	}
-	// interface for os.FileInfo as returned by ioutil.ReadDir(), files is a slice of these:
+	// Reference interface for os.FileInfo as returned by ioutil.ReadDir() and filepath.Walk():
 	// type FileInfo interface {
 	//   Name() string       // base name of the file
 	//   Size() int64        // length in bytes for regular files; system-dependent for others
@@ -87,8 +36,34 @@ func main() {
 	//   IsDir() bool        // abbreviation for Mode().IsDir()
 	//   Sys() interface{}   // underlying data source (can return nil)
 	// }
+	err := filepath.Walk(dir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			color.Blue("\t'%s'", path)
+			if info.IsDir() == true {
+				color.Magenta("\t Folder found! Skipping '%s'\n", info.Name())
+			} else {
+				lastIndex := strings.LastIndex(info.Name(), ".")
+				ext := info.Name()[lastIndex+1:]
+				if contains(formats, ext) {
+					files = append(files, path)
+				}
+			}
+			return nil
+		})
+	// after walking all directories and subdirectories...
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	return files, nil
+}
 
-	color.Green("After looping, created filepaths slice of: %s", filepaths)
+func doNormalization(wg *sync.WaitGroup, file string) {
+	defer wg.Done()
+	color.Red("Preparing to normalize file at '%s", file)
 
 	// ~ ffmpeg -i big_buck_bunny_480p_stereo.avi -filter:a loudnorm -c:v copy NA_big_buck_bunny.avi
 
@@ -113,6 +88,38 @@ func main() {
 	// }
 
 	// fmt.Printf("OUTPUT: %s", out)
+}
+
+func main() {
+	fmt.Print("\n")
+	color.Red(`/\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
+	fmt.Print("\n")
+
+	if len(os.Args) < 2 {
+		fmt.Println("[usage error] - please provide a directory in which to look for video files.")
+		fmt.Println("Try again, such as: ~ ./audio_normalize movies/")
+		os.Exit(-1)
+	}
+
+	dir := os.Args[1]
+	files, readErr := collectFilenames(dir)
+	if readErr != nil {
+		color.Red("[ERROR]: %s", readErr)
+	}
+
+	color.Green("  After looping, created filepaths slice of: %s", files)
+
+	// worker waitgroup to ensure all goroutines are completed before exiting program
+	var wg sync.WaitGroup
+
+	for _, file := range files {
+		wg.Add(1)
+		go doNormalization(&wg, file)
+	}
+
+	fmt.Println("Main: Waiting for workers to finish")
+	wg.Wait()
+	fmt.Println("Main: Completed")
 
 	// osd := fmt.Sprintf(" * Reading %d files...", len(files))
 
