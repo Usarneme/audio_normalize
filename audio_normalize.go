@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,16 +27,6 @@ func collectFilenames(dir string) ([]string, error) {
 	color.Cyan("Reading all files in the directory '%s/'", dir)
 
 	var files []string
-
-	// Reference interface for os.FileInfo as returned by ioutil.ReadDir() and filepath.Walk():
-	// type FileInfo interface {
-	//   Name() string       // base name of the file
-	//   Size() int64        // length in bytes for regular files; system-dependent for others
-	//   Mode() FileMode     // file mode bits
-	//   ModTime() time.Time // modification time
-	//   IsDir() bool        // abbreviation for Mode().IsDir()
-	//   Sys() interface{}   // underlying data source (can return nil)
-	// }
 	err := filepath.Walk(dir,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -70,24 +61,23 @@ func doNormalization(wg *sync.WaitGroup, file string) {
 	// cmd := fmt.Sprintf("-i files/big_buck_bunny_480p_stereo.avi -filter:a loudnorm files/big_buck_bunny_480p_stereo_NA.avi", path, path)
 	// fmt.Printf("\nPreparing to execute command: 'ffmpeg %s'", cmd)
 
+	lastIndex := strings.LastIndex(file, "/")
+	name := file[lastIndex+1:]
+	outName := fmt.Sprintf("output/%s", name)
+
+	color.Magenta(outName)
 	// working code for executing a single ffmpeg routine
 	// cmd := exec.Command("ffmpeg", "-i", "files/big_buck_bunny_480p_stereo.avi", "-filter:a", "loudnorm", "-c:v", "copy", "files/big_buck_bunny_480p_stereo_NA.avi")
-	// cmd.Stdin = os.Stdin
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	// e := cmd.Run()
-	// if e != nil {
-	// 	color.Red("[ERROR]")
-	// 	fmt.Printf("%s", e)
-	// }
-	// fmt.Println("After ffmpeg run")
-
-	// if err != nil {
-	// 	fmt.Printf("\n\nERROR encountered %s\n", err)
-	// 	log.Fatal(err)
-	// }
-
-	// fmt.Printf("OUTPUT: %s", out)
+	cmd := exec.Command("ffmpeg", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	e := cmd.Run()
+	if e != nil {
+		color.Red("[ERROR]")
+		fmt.Printf("%s", e)
+	}
+	fmt.Println("After ffmpeg run")
 }
 
 func main() {

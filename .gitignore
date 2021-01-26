@@ -17,3 +17,7 @@
 # files folder contains test input/output video files
 files/
 files/*
+target/
+target/*
+output/
+output/*
