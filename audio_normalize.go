@@ -24,7 +24,7 @@ func contains(arr [len(formats)]string, query string) bool {
 }
 
 func collectFilenames(dir string) ([]string, error) {
-	color.Cyan("Reading all files in the directory '%s/'", dir)
+	color.Cyan("  [func] Reading all files in the directory '%s/'", dir)
 
 	var files []string
 	err := filepath.Walk(dir,
@@ -32,14 +32,16 @@ func collectFilenames(dir string) ([]string, error) {
 			if err != nil {
 				return err
 			}
-			color.Blue("\t'%s'", path)
 			if info.IsDir() == true {
-				color.Magenta("\t Folder found! Skipping '%s'\n", info.Name())
+				color.Blue("\t'%s' skipped - folder.", info.Name())
 			} else {
 				lastIndex := strings.LastIndex(info.Name(), ".")
 				ext := info.Name()[lastIndex+1:]
 				if contains(formats, ext) {
+					color.Magenta("\t'%s' appended to workgroup list - a/v file.", path)
 					files = append(files, path)
+				} else {
+					color.Blue("\t'%s' skipped - non-a/v file.", info.Name())
 				}
 			}
 			return nil
@@ -49,35 +51,28 @@ func collectFilenames(dir string) ([]string, error) {
 		log.Println(err)
 		return nil, err
 	}
+	color.Green("  [func] Returning: %v", files)
 	return files, nil
 }
 
 func doNormalization(wg *sync.WaitGroup, file string) {
 	defer wg.Done()
-	color.Red("Preparing to normalize file at '%s", file)
-
-	// ~ ffmpeg -i big_buck_bunny_480p_stereo.avi -filter:a loudnorm -c:v copy NA_big_buck_bunny.avi
-
-	// cmd := fmt.Sprintf("-i files/big_buck_bunny_480p_stereo.avi -filter:a loudnorm files/big_buck_bunny_480p_stereo_NA.avi", path, path)
-	// fmt.Printf("\nPreparing to execute command: 'ffmpeg %s'", cmd)
+	color.Cyan("  [func] Preparing to normalize file at '%s", file)
 
 	lastIndex := strings.LastIndex(file, "/")
 	name := file[lastIndex+1:]
 	outName := fmt.Sprintf("output/%s", name)
 
-	color.Magenta(outName)
-	// working code for executing a single ffmpeg routine
-	// cmd := exec.Command("ffmpeg", "-i", "files/big_buck_bunny_480p_stereo.avi", "-filter:a", "loudnorm", "-c:v", "copy", "files/big_buck_bunny_480p_stereo_NA.avi")
-	cmd := exec.Command("ffmpeg", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
+	cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	e := cmd.Run()
 	if e != nil {
-		color.Red("[ERROR]")
-		fmt.Printf("%s", e)
+		color.Red("  [ERROR] - %v\n", e)
 	}
-	fmt.Println("After ffmpeg run")
+	color.Green("  [func] Returning from doNormalize on '%s'", outName)
 }
 
 func main() {
@@ -97,8 +92,6 @@ func main() {
 		color.Red("[ERROR]: %s", readErr)
 	}
 
-	color.Green("  After looping, created filepaths slice of: %s", files)
-
 	// worker waitgroup to ensure all goroutines are completed before exiting program
 	var wg sync.WaitGroup
 
@@ -107,9 +100,9 @@ func main() {
 		go doNormalization(&wg, file)
 	}
 
-	fmt.Println("Main: Waiting for workers to finish")
+	color.Red("  [main] Waiting for workers to finish")
 	wg.Wait()
-	fmt.Println("Main: Completed")
+	color.Red("  [main] Completed. Exiting.")
 
 	// osd := fmt.Sprintf(" * Reading %d files...", len(files))
 
@@ -129,7 +122,7 @@ func main() {
 	// names := make([]string, len(files))
 
 	// for i := 0; i < len(files); i++ {
-	// 	// fmt.Printf("\t\tFound video file '%s'", files[i].Name())
+	// 	// fmt.Printf("\t\tFound video file "%s'", files[i].Name())
 	// 	bar.Add(1)
 	// 	names = append(names, files[i].Name())
 	// 	name := strings.Split(files[i].Name(), ".")[0]
