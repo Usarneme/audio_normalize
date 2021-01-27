@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -32,16 +33,26 @@ func collectFilenames(dir string) ([]string, error) {
 			if err != nil {
 				return err
 			}
+			length := len(info.Name())
+			idx := 0
+			var shortName string
+			if length > 20 {
+				idx = length % 20
+				shortName = "..." + info.Name()[idx:]
+			} else {
+				shortName = info.Name()[idx:]
+			}
+
 			if info.IsDir() == true {
-				color.Blue("\t'%s' skipped - folder.", info.Name())
+				color.Blue("    skipped\tfolder.  \t'%s'", shortName)
 			} else {
 				lastIndex := strings.LastIndex(info.Name(), ".")
 				ext := info.Name()[lastIndex+1:]
 				if contains(formats, ext) {
-					color.Magenta("\t'%s' appended to workgroup list - a/v file.", path)
+					color.Magenta("    appended\ta/v file.\t'%s'", shortName)
 					files = append(files, path)
 				} else {
-					color.Blue("\t'%s' skipped - non-a/v file.", info.Name())
+					color.Blue("    skipped\tnon-a/v file.\t'%s'", shortName)
 				}
 			}
 			return nil
@@ -51,7 +62,7 @@ func collectFilenames(dir string) ([]string, error) {
 		log.Println(err)
 		return nil, err
 	}
-	color.Green("  [func] Returning: %v", files)
+	color.Green("  [func] Returning from collectFilenames - %v", files)
 	return files, nil
 }
 
@@ -63,16 +74,28 @@ func doNormalization(wg *sync.WaitGroup, file string) {
 	name := file[lastIndex+1:]
 	outName := fmt.Sprintf("output/%s", name)
 
-	cmd := exec.Command("ffmpeg", "-loglevel", "quiet", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// command with stderr passed to a temp file descriptor
+	// cmd := exec.Command("exec", "3>&1;")
+	//  "sout=$(ffmpeg -i files/tmp/some.avi -filter:a loudnorm -c:v copy NA_big_buck_bunny.avi -loglevel error 2>&1 1>&3); exec 3>&-; echo $sout;")
 
-	e := cmd.Run()
-	if e != nil {
-		color.Red("  [ERROR] - %v\n", e)
+	cmd := exec.Command("ffmpeg", "-loglevel", "error", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
+
+	// duplicate output files are ignored/not overwritten by default, so we don't need any interactivity via stdin
+	// '-loglevel error' suppresses stdout logging of successful processing
+	// stderr output is piped so we can use it for logging results/informing the user
+	stderr, _ := cmd.StderrPipe()
+	if err := cmd.Start(); err != nil {
+		color.Red("  [ERROR] %v", err)
+		log.Fatal(err)
 	}
-	color.Green("  [func] Returning from doNormalize on '%s'", outName)
+
+	scanner := bufio.NewScanner(stderr)
+	for scanner.Scan() {
+		errMsg := scanner.Text()
+		color.Magenta("  [func] Errors encoutered: '%v'", errMsg)
+	}
+
+	color.Green("  [func] Returning from doNormalize - '%s'", outName)
 }
 
 func main() {
