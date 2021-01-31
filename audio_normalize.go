@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"log"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +17,7 @@ import (
 var formats = [...]string{"avi", "mkv", "mp4"}
 
 func collectFilenames(dir string) ([]string, error) {
-	color.Cyan("[func] Collecting all filenames within '%s%s'", dir, string(os.PathSeparator))
+	color.Blue(" [func collectFilenames] from directory: '%s%s'", dir, string(os.PathSeparator))
 
 	var files []string
 	err := filepath.Walk(dir,
@@ -57,7 +56,7 @@ func collectFilenames(dir string) ([]string, error) {
 
 func doNormalization(wg *sync.WaitGroup, file string) {
 	defer wg.Done()
-	color.Cyan("[func doNormalize()] Preparing to normalize file at '%s", file)
+	color.Blue(" [func doNormalize] Preparing to normalize file at '%s", file)
 
 	lastIndex := strings.LastIndex(file, string(os.PathSeparator))
 	name := file[lastIndex+1:]
@@ -66,49 +65,97 @@ func doNormalization(wg *sync.WaitGroup, file string) {
 	outName := fmt.Sprintf("output%c%s%s%s", os.PathSeparator, prepend, separator, name)
 	cmd := exec.Command("ffmpeg", "-loglevel", "error", "-i", file, "-filter:a", "loudnorm", "-c:v", "copy", outName)
 
-	// stderr output is piped so we can use it for logging results
-	stderr, _ := cmd.StderrPipe()
-	if err := cmd.Start(); err != nil {
-		color.Red("  [ERROR] %v", err)
-		log.Fatal(err)
+	cmdOut, err := cmd.StdoutPipe()
+	if err != nil {
+		color.Red("  [err doNormalize] - unable to pipe stdOut")
 	}
 
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		errMsg := scanner.Text()
-		if strings.Contains(errMsg, "H.264 bitstream malformed, no startcode found, use the video bitstream filter 'h264_mp4toannexb'") {
-			color.HiYellow("FFMPEG COMMAND ISSUE, retrying with fix: ffmpeg -i INPUT.avi -filter:a loudnorm -bsf:v h264_mp4toannexb -c:v copy NA_OUTPUT.avi")
-			// note we already attempted to create an outName file which is corrupt using the previous ffmpeg command, need to delete it to create a new one with the corrected command
-			err := os.Remove(outName)
-			if err != nil {
-				fmt.Println(err)
-			}
-			prependFix := "NA2"
-			outNameFix := fmt.Sprintf("output%c%s%s%s", os.PathSeparator, prependFix, separator, name)
-			cmdFix := exec.Command("ffmpeg", "-loglevel", "error", "-i", file, "-filter:a", "loudnorm", "-bsf:v", "h264_mp4toannexb", "-c:v", "copy", outNameFix)
-			errFix, _ := cmdFix.StderrPipe()
+	cmdErr, err := cmd.StderrPipe()
+	if err != nil {
+		color.Red("  [err doNormalize] - unable to pipe stdErr")
+	}
 
-			if err := cmdFix.Start(); err != nil {
-				color.Red("  [ERROR] %v", err)
-				log.Fatal(err)
-			}
+	cmd.Start()
 
-			scannerFix := bufio.NewScanner(errFix)
-			for scannerFix.Scan() {
-				errMsgFix := scannerFix.Text()
-				color.Magenta("[func] Errors encountered: Calling update log")
-				updateLog(errMsgFix)
-			}
-		} else {
-			color.Magenta("[func] Errors encountered: Calling update log")
-			updateLog(errMsg)
+	cmdBytes, err := ioutil.ReadAll(cmdOut)
+	if err != nil {
+		color.Red("  [err doNormalize] - unable to read stdout of ffmpeg cmd")
+	}
+	cmdErrBytes, err := ioutil.ReadAll(cmdErr)
+	if err != nil {
+		color.Red("  [err doNormalize] - unable to read stderr of ffmpeg cmd")
+	}
+	cmd.Wait()
+	if len(string(cmdBytes)) > 0 {
+		color.Blue("[func doNormalize] %s", string(cmdBytes)[:len(string(cmdBytes))-1])
+	}
+	if len(string(cmdErrBytes)) > 0 {
+		color.Red("  [err doNormalize] %s", string(cmdErrBytes)[:len(string(cmdErrBytes))-1])
+		attemptCorrectError(file, string(cmdErrBytes)[:len(string(cmdErrBytes))-1])
+		return
+	}
+
+	color.Green(" [func doNormalize] Returning. Created output file: '%s'", outName)
+}
+
+func attemptCorrectError(file string, errMsg string) {
+	color.Magenta("  [func attemptCorrectError] Attempting to overcome ffmpeg error")
+
+	lastIndex := strings.LastIndex(file, string(os.PathSeparator))
+	name := file[lastIndex+1:]
+	prepend := "NA2"
+	separator := "_"
+	outName := fmt.Sprintf("output%c%s%s%s", os.PathSeparator, prepend, separator, name)
+
+	if strings.Contains(errMsg, "H.264 bitstream malformed, no startcode found, use the video bitstream filter 'h264_mp4toannexb'") {
+		color.HiYellow("FFMPEG COMMAND ISSUE, retrying with fix: ffmpeg -i INPUT.avi -filter:a loudnorm -bsf:v h264_mp4toannexb -c:v copy NA_OUTPUT.avi")
+		// note we already attempted to create an outName file which is corrupt using the previous ffmpeg command, need to delete it to create a new one with the corrected command
+		err := os.Remove(outName)
+		if err != nil {
+			fmt.Println(err)
 		}
+		cmdFix := exec.Command("ffmpeg", "-loglevel", "error", "-i", file, "-filter:a", "loudnorm", "-bsf:v", "h264_mp4toannexb", "-c:v", "copy", outName)
+
+		cmdOut, err := cmdFix.StdoutPipe()
+		if err != nil {
+			color.Red("  [err attemptCorrectError] - unable to pipe stdOut")
+		}
+
+		cmdErr, err := cmdFix.StderrPipe()
+		if err != nil {
+			color.Red("  [err attemptCorrectError] - unable to pipe stdErr")
+		}
+
+		cmdFix.Start()
+
+		cmdBytes, err := ioutil.ReadAll(cmdOut)
+		if err != nil {
+			color.Red("  [err attemptCorrectError] - unable to read stdout of ffmpeg cmd")
+		}
+		cmdErrBytes, err := ioutil.ReadAll(cmdErr)
+		if err != nil {
+			color.Red("  [err attemptCorrectError] - unable to read stderr of ffmpeg cmd")
+		}
+		cmdFix.Wait()
+		if len(string(cmdBytes)) > 0 {
+			color.Blue("  [func doNormalize] %s", string(cmdBytes))
+		}
+		cmdErrStr := string(cmdErrBytes)
+		if len(cmdErrStr) > 0 {
+			color.Red("  [err attemptCorrectError] %s", cmdErrStr)
+			updateLog(cmdErrStr)
+		}
+
+	} else {
+		color.Red("  [err attemptCorrectError] Unable to recover error. Updating log...")
+		updateLog(errMsg)
+		return
 	}
-	color.Green("[func] Returning from doNormalize - '%s'", outName)
+	color.Green("  [func attemptCorrectError] Success! Returning. Created output file: '%s'", outName)
 }
 
 func updateLog(msg string) {
-	color.Cyan("[func updateLog] Outputting error msg to file: '%s'", msg)
+	color.Blue("  [func updateLog] Outputting error msg to file.")
 	path := fmt.Sprintf("output%slog.txt", string(os.PathSeparator))
 	if fileExists(path) == true {
 		// already exists, append to file
@@ -135,8 +182,7 @@ func updateLog(msg string) {
 		}
 		defer f.Close()
 		dt := time.Now()
-		f.WriteString(dt.String())
-		fmtStr := fmt.Sprintf("\n%s\n", msg)
+		fmtStr := fmt.Sprintf("%s - %s\n", dt.String(), msg)
 		f.WriteString(fmtStr)
 	}
 }
@@ -159,7 +205,7 @@ func contains(arr [len(formats)]string, query string) bool {
 }
 
 func main() {
-	color.Red(`[main] /\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
+	color.Yellow(`[main] /\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
 
 	if len(os.Args) < 2 {
 		fmt.Println("[usage error] - please provide a directory in which to look for video files.")
@@ -170,20 +216,20 @@ func main() {
 	dir := os.Args[1]
 	files, readErr := collectFilenames(dir)
 	if readErr != nil {
-		color.Red("[ERROR]: %s", readErr)
+		color.Red("  [err]: %s", readErr)
 		os.Exit(1)
 	}
 
 	// worker waitgroup to ensure all goroutines are completed before exiting program
 	var wg sync.WaitGroup
 
-	color.Red("[main] Assigning worker tasks")
+	color.Yellow("[main] Assigning worker tasks")
 	for _, file := range files {
 		wg.Add(1)
 		go doNormalization(&wg, file)
 	}
 
 	wg.Wait()
-	color.Red("[main] All workers finished and audio normalization complete!")
+	color.Yellow("[main] All workers finished and audio normalization complete!")
 	color.Yellow("[main] Please check the file log.txt in the output/ directory for any error details.")
 }

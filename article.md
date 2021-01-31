@@ -4,8 +4,6 @@
 
 ##### *Technically it is called 'dynamic range compression' but for simplicity, normalization is: increasing the low and decreasing the high volume parts in a file (video or audio) to be closer to a median volume level.
 
-##### [I don't need all this, I just want to run the script on my video library](i-just-want-to-run-this-on-my-video-library)
-
 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/The_Thinker%2C_Mus%C3%A9e_Rodin%2C_Paris_September_2013_001.jpg/1600px-The_Thinker%2C_Mus%C3%A9e_Rodin%2C_Paris_September_2013_001.jpg" alt="The Thinker, Musée Rodin, Paris." license="https://creativecommons.org/licenses/by-sa/2.0" declaration="No changes were made to the license or image (other than resizing for viewing)." author="Tammy Lo from New York, NY" style="max-width: 722px;" >
 
 ----
@@ -214,7 +212,7 @@ Boilerplate main func:
 
 ```
 
-The two functinos mentioned in main() are collectFilenames and doNormalization which hopefully are self-explanatory if you've read this far.
+The two functions mentioned in main() are collectFilenames and doNormalization which hopefully are self-explanatory if you've read this far.
 
 Main functionality:
 
@@ -335,9 +333,6 @@ Ffmpeg
 
 Github Repo
 * https://github.com/Usarneme/audio_normalize
-
-#### I just want to run this on my video library
-* https://github.com/Usarneme/audio_normalize/files/ez.md
 
 ---
 ##### Attribution & Credits

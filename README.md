@@ -6,12 +6,19 @@ Adjust too-quiet troughs and too-loud audio peaks in videos. Written in fast, co
 #### Install/Use
 * Git clone and cd into the directory
 * `go build audio_normalize.go`
+Mac/Linux
 * `./audio_normalize directory/` where directory/ contains some video files you want normalized
+Windows
+* `audio_normalize.exe directory/`
+
+#### Requirements
+* Go programming language (https://golang.org/dl/)
+* ffmpeg (https://ffmpeg.org/download.html)
 
 ---
 
 For a detailed writeup of my process in creating this please see here. 
-* https://github.com/Usarneme/audio_normalize/article.md
+* https://github.com/Usarneme/audio_normalize/blob/main/article.md
 
 ---
 
