@@ -57,7 +57,7 @@ func collectFilenames(dir string) ([]string, error) {
 
 func doNormalization(wg *sync.WaitGroup, file string) {
 	defer wg.Done()
-	color.Cyan("[func] Preparing to normalize file at '%s", file)
+	color.Cyan("[func doNormalize()] Preparing to normalize file at '%s", file)
 
 	lastIndex := strings.LastIndex(file, string(os.PathSeparator))
 	name := file[lastIndex+1:]
@@ -76,14 +76,39 @@ func doNormalization(wg *sync.WaitGroup, file string) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		errMsg := scanner.Text()
-		color.Magenta("[func] Errors encoutered: Calling update log")
-		updateLog(errMsg)
+		if strings.Contains(errMsg, "H.264 bitstream malformed, no startcode found, use the video bitstream filter 'h264_mp4toannexb'") {
+			color.HiYellow("FFMPEG COMMAND ISSUE, retrying with fix: ffmpeg -i INPUT.avi -filter:a loudnorm -bsf:v h264_mp4toannexb -c:v copy NA_OUTPUT.avi")
+			// note we already attempted to create an outName file which is corrupt using the previous ffmpeg command, need to delete it to create a new one with the corrected command
+			err := os.Remove(outName)
+			if err != nil {
+				fmt.Println(err)
+			}
+			prependFix := "NA2"
+			outNameFix := fmt.Sprintf("output%c%s%s%s", os.PathSeparator, prependFix, separator, name)
+			cmdFix := exec.Command("ffmpeg", "-loglevel", "error", "-i", file, "-filter:a", "loudnorm", "-bsf:v", "h264_mp4toannexb", "-c:v", "copy", outNameFix)
+			errFix, _ := cmdFix.StderrPipe()
+
+			if err := cmdFix.Start(); err != nil {
+				color.Red("  [ERROR] %v", err)
+				log.Fatal(err)
+			}
+
+			scannerFix := bufio.NewScanner(errFix)
+			for scannerFix.Scan() {
+				errMsgFix := scannerFix.Text()
+				color.Magenta("[func] Errors encountered: Calling update log")
+				updateLog(errMsgFix)
+			}
+		} else {
+			color.Magenta("[func] Errors encountered: Calling update log")
+			updateLog(errMsg)
+		}
 	}
 	color.Green("[func] Returning from doNormalize - '%s'", outName)
 }
 
 func updateLog(msg string) {
-	color.Cyan("[func] Outputting error msg to file: '%s'", msg)
+	color.Cyan("[func updateLog] Outputting error msg to file: '%s'", msg)
 	path := fmt.Sprintf("output%slog.txt", string(os.PathSeparator))
 	if fileExists(path) == true {
 		// already exists, append to file
@@ -134,7 +159,7 @@ func contains(arr [len(formats)]string, query string) bool {
 }
 
 func main() {
-	color.Red(`/\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
+	color.Red(`[main] /\ |_| |) | ()   |\| () /? |\/| /\ |_ | ~/_ [-`)
 
 	if len(os.Args) < 2 {
 		fmt.Println("[usage error] - please provide a directory in which to look for video files.")
